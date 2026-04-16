@@ -1,4 +1,4 @@
-q"""
+"""
 app.py  —  Face Recognition Flask Web Application
 Supports:
   • /              → main UI (webcam + upload)
