@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaceID — AI Visual Recognition</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --panel:     #111118;
+      --border:    #1e1e2e;
+      --text:      #e8e8f0;
+      --muted:     #5a5a7a;
+      --green:     #00ff88;
+      --green-dim: #00ff8822;
+      --red:       #ff3366;
+      --red-dim:   #ff336622;
+      --accent:    #7c5cfc;
+      --accent2:   #00cfff;
+      --radius:    12px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background grid */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(124,92,252,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,92,252,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    .container {
+      position: relative; z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 1.25rem;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-mark {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 1.3rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.8rem; font-weight: 800; letter-spacing: -0.5px; }
+    header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.15rem; }
+    .model-badge {
+      margin-left: auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      text-align: right;
+    }
+    .model-badge span { color: var(--accent2); }
+    .badge-dot {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 6px;
+      background: {% if model_loaded %}var(--green){% else %}var(--red){% endif %};
+      box-shadow: 0 0 8px {% if model_loaded %}var(--green){% else %}var(--red){% endif %};
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex; gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .tab-btn {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 0.65rem 1.4rem;
+      font-family: 'Syne', sans-serif;
+      font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .tab-btn:hover:not(.active) {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    /* ── Layout ── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.5rem;
+    }
+    @media (max-width: 768px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.6rem;
+      font-weight: 600; font-size: 0.9rem;
+    }
+    .panel-header .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .panel-body { padding: 1.25rem; }
+
+    /* ── Camera area ── */
+    .camera-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      background: #05050a;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #webcam, #preview-img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    #webcam.active, #preview-img.active { display: block; }
+    .camera-placeholder {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 0.75rem;
+      color: var(--muted);
+    }
+    .camera-placeholder svg { opacity: 0.3; }
+    .camera-placeholder p { font-size: 0.85rem; }
+
+    /* Result overlay */
+    #result-overlay {
+      position: absolute; top: 12px; left: 12px;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.9rem; font-weight: 700;
+      display: none;
+      animation: fadeIn 0.3s ease;
+    }
+    #result-overlay.me {
+      background: var(--green-dim);
+      border: 1.5px solid var(--green);
+      color: var(--green);
+      display: block;
+    }
+    #result-overlay.not-me {
+      background: var(--red-dim);
+      border: 1.5px solid var(--red);
+      color: var(--red);
+      display: block;
+    }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+    /* Controls */
+    .controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
+    .btn {
+      flex: 1; min-width: 120px;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      border: none; cursor: pointer;
+      font-family: 'Syne', sans-serif;
+      font-size: 0.9rem; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #9070ff; transform: translateY(-1px); }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-danger {
+      background: transparent;
+      border: 1px solid var(--red);
+      color: var(--red);
+    }
+    .btn-danger:hover { background: var(--red-dim); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+    /* Upload area */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--muted);
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(124,92,252,0.05);
+    }
+    .upload-zone p { font-size: 0.85rem; margin-top: 0.5rem; }
+    #file-input { display: none; }
+
+    /* ── Results sidebar ── */
+    .result-card {
+      background: #0d0d16;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .result-card-label {
+      font-size: 0.75rem; font-family: 'Space Mono', monospace;
+      color: var(--muted); margin-bottom: 0.75rem;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .result-verdict {
+      font-size: 1.8rem; font-weight: 800;
+      letter-spacing: -1px;
+    }
+    .result-verdict.me   { color: var(--green); text-shadow: 0 0 20px var(--green); }
+    .result-verdict.not-me { color: var(--red);  text-shadow: 0 0 20px var(--red); }
+    .result-verdict.idle { color: var(--muted); font-size: 1.2rem; font-weight: 400; }
+
+    .confidence-bar-wrap {
+      margin-top: 1rem;
+    }
+    .confidence-bar-wrap label {
+      display: flex; justify-content: space-between;
+      font-size: 0.78rem; color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    .confidence-bar {
+      height: 6px; border-radius: 3px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .confidence-fill {
+      height: 100%; width: 0;
+      border-radius: 3px;
+      transition: width 0.5s ease, background 0.3s;
+    }
+
+    .meta-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0.75rem; margin-top: 1rem;
+    }
+    .meta-cell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem;
+    }
+    .meta-cell .key {
+      font-size: 0.7rem; color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      text-transform: uppercase;
+    }
+    .meta-cell .val {
+      font-size: 0.9rem; font-weight: 600;
+      margin-top: 0.2rem;
+      color: var(--accent2);
+    }
+
+    /* TM Section */
+    .tm-section {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .tm-verdict {
+      font-size: 1.6rem; font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .tm-verdict.me     { color: var(--green); }
+    .tm-verdict.not-me { color: var(--red); }
+    .tm-verdict.idle   { color: var(--muted); font-size: 1rem; font-weight: 400; }
+
+    /* Log */
+    .log-area {
+      background: #05050a;
+      border-radius: 6px;
+      padding: 0.75rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      height: 100px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    .log-area .ok  { color: var(--green); }
+    .log-area .err { color: var(--red); }
+    .log-area .inf { color: var(--accent2); }
+
+    /* Tab panels */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Spinner */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Notice box */
+    .notice {
+      background: rgba(124,92,252,0.08);
+      border: 1px solid rgba(124,92,252,0.3);
+      border-radius: 8px;
+      padding: 0.9rem 1.1rem;
+      font-size: 0.83rem;
+      color: #b0a0ff;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+    .notice strong { color: var(--accent2); }
+    .notice ol { padding-left: 1.2rem; margin-top: 0.4rem; }
+    .notice li { margin-bottom: 0.2rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-mark">FI</div>
+    <div>
+      <h1>FaceID Recognition</h1>
+      <p>Binary face classification — ME vs NOT ME</p>
+    </div>
+    <div class="model-badge">
+      <div><span class="badge-dot"></span>sklearn model</div>
+      <span>{{ model_name }}</span><br>
+      {% if model_acc %}<span>Accuracy: {{ model_acc }}%</span>{% endif %}
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('webcam-tab', this)">📷 Webcam</button>
+    <button class="tab-btn" onclick="switchTab('upload-tab', this)">📁 Upload Image</button>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- LEFT: Input -->
+    <div>
+      <!-- Webcam Tab -->
+      <div id="webcam-tab" class="tab-panel active">
+        <div class="panel">
+          <div class="panel-header"><span class="dot"></span>Live Camera Feed</div>
+          <div class="panel-body">
+            <div class="camera-wrap" id="camera-wrap">
+              <div class="camera-placeholder" id="cam-placeholder">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+                <p>Camera is off</p>
+              </div>
+              <video id="webcam" autoplay muted playsinline></video>
+              <img id="preview-img" alt="Captured frame" />
+              <div id="result-overlay"></div>
+            </div>
+            <div class="controls">
+              <button class="btn btn-primary" id="start-cam-btn" onclick="startCamera()">▶ Start Camera</button>
+              <button class="btn btn-secondary" id="capture-btn" onclick="captureAndPredict()" disabled>⚡ Capture & Predict</button>
+              <button class="btn btn-danger" id="stop-cam-btn" onclick="stopCamera()" disabled>■ Stop</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Upload Tab -->
+      <div id="upload-tab" class="tab-panel">
+        <div class="panel">
+          <div class="panel-header"><span class="dot"></span>Upload Image</div>
+          <div class="panel-body">
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+                 ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5">
+                <polyline points="16 16 12 12 8 16"/>
+                <line x1="12" y1="12" x2="12" y2="21"/>
+                <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+              </svg>
+              <p>Drag & drop an image here, or click to browse</p>
+              <p style="font-size:0.75rem; margin-top:0.25rem">JPEG, PNG — max 5MB</p>
+            </div>
+            <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)">
+
+            <div class="camera-wrap" id="upload-preview-wrap" style="display:none; margin-top:1rem">
+              <img id="upload-preview-img" style="width:100%;height:100%;object-fit:contain;display:block" />
+              <div id="upload-result-overlay" class="result-overlay"></div>
+            </div>
+
+            <div class="controls" style="margin-top:1rem">
+              <button class="btn btn-primary" id="predict-upload-btn" onclick="predictUpload()" disabled>⚡ Run Prediction</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Results -->
+    <div>
+      <div class="panel">
+        <div class="panel-header"><span class="dot" style="background:var(--accent2)"></span>Results</div>
+        <div class="panel-body">
+
+          <!-- sklearn result -->
+          <div class="result-card">
+            <div class="result-card-label">sklearn model</div>
+            <div class="result-verdict idle" id="sk-verdict">Awaiting input…</div>
+            <div class="confidence-bar-wrap" id="sk-conf-wrap" style="display:none">
+              <label><span>Confidence</span><span id="sk-conf-pct">0%</span></label>
+              <div class="confidence-bar">
+                <div class="confidence-fill" id="sk-conf-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TM result -->
+          <div class="result-card tm-section">
+            <div class="result-card-label">Teachable Machine</div>
+            <div class="tm-verdict idle" id="tm-verdict">Awaiting input…</div>
+            <div class="confidence-bar-wrap" id="tm-conf-wrap" style="display:none">
+              <label><span>Confidence</span><span id="tm-conf-pct">0%</span></label>
+              <div class="confidence-bar">
+                <div class="confidence-fill" id="tm-conf-fill"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Meta -->
+          <div class="meta-grid">
+            <div class="meta-cell"><div class="key">Face Detected</div><div class="val" id="meta-face">—</div></div>
+            <div class="meta-cell"><div class="key">Model</div><div class="val" id="meta-model">{{ model_name }}</div></div>
+            <div class="meta-cell"><div class="key">Train Acc</div><div class="val" id="meta-acc">{% if model_acc %}{{ model_acc }}%{% else %}N/A{% endif %}</div></div>
+            <div class="meta-cell"><div class="key">TM Status</div><div class="val" id="meta-tm">Not loaded</div></div>
+          </div>
+
+          <!-- Log -->
+          <div style="margin-top:1rem">
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:0.4rem">Activity Log</div>
+            <div class="log-area" id="log"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TM Load Panel -->
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="dot" style="background:#ffcc00"></span>Teachable Machine Setup</div>
+        <div class="panel-body">
+          <div class="notice">
+            <strong>How to set up Teachable Machine:</strong>
+            <ol>
+              <li>Go to <a href="https://teachablemachine.withgoogle.com" target="_blank" style="color:var(--accent2)">teachablemachine.withgoogle.com</a></li>
+              <li>Train an Image Project with "ME" and "NOT ME" classes</li>
+              <li>Export → TensorFlow.js → Upload to a hosting URL</li>
+              <li>Paste your model URL below</li>
+            </ol>
+          </div>
+          <input type="text" id="tm-url" placeholder="https://teachablemachine.withgoogle.com/models/YOUR_ID/"
+            style="width:100%; background:#05050a; border:1px solid var(--border); color:var(--text);
+                   border-radius:6px; padding:0.65rem 0.9rem; font-family:'Space Mono',monospace;
+                   font-size:0.78rem; margin-bottom:0.75rem; outline:none;">
+          <button class="btn btn-secondary" style="width:100%" onclick="loadTMModel()">Load TM Model</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TensorFlow.js + Teachable Machine -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let stream = null;
+let tmModel = null;
+let capturedBlob = null;
+let uploadedFile = null;
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(panelId, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+function log(msg, type='inf') {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString();
+  el.innerHTML += `<span class="${type}">[${ts}] ${msg}</span>\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user' } });
+    const vid = document.getElementById('webcam');
+    vid.srcObject = stream;
+    vid.classList.add('active');
+    document.getElementById('cam-placeholder').style.display = 'none';
+    document.getElementById('preview-img').classList.remove('active');
+    document.getElementById('result-overlay').className = '';
+    document.getElementById('capture-btn').disabled = false;
+    document.getElementById('stop-cam-btn').disabled = false;
+    document.getElementById('start-cam-btn').disabled = true;
+    log('Camera started', 'ok');
+  } catch(e) {
+    log(`Camera error: ${e.message}`, 'err');
+    alert('Cannot access camera: ' + e.message);
+  }
+}
+
+function stopCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const vid = document.getElementById('webcam');
+  vid.classList.remove('active');
+  document.getElementById('cam-placeholder').style.display = 'flex';
+  document.getElementById('capture-btn').disabled = true;
+  document.getElementById('stop-cam-btn').disabled = true;
+  document.getElementById('start-cam-btn').disabled = false;
+  log('Camera stopped');
+}
+
+async function captureAndPredict() {
+  const vid = document.getElementById('webcam');
+  const canvas = document.createElement('canvas');
+  canvas.width = vid.videoWidth || 640;
+  canvas.height = vid.videoHeight || 480;
+  canvas.getContext('2d').drawImage(vid, 0, 0);
+
+  // Show snapshot
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  const prev = document.getElementById('preview-img');
+  prev.src = dataUrl;
+  prev.classList.add('active');
+  vid.classList.remove('active');
+
+  log('Frame captured — running predictions…');
+  await runAllPredictions(dataUrl, canvas);
+
+  // Resume after 2s
+  setTimeout(() => {
+    if (stream) {
+      prev.classList.remove('active');
+      vid.classList.add('active');
+    }
+  }, 2500);
+}
+
+// ── File upload ───────────────────────────────────────────────────────────────
+function dragOver(e)  { e.preventDefault(); document.getElementById('upload-zone').classList.add('drag-over'); }
+function dragLeave(e) { document.getElementById('upload-zone').classList.remove('drag-over'); }
+function dropFile(e)  { e.preventDefault(); dragLeave(e); processFile(e.dataTransfer.files[0]); }
+function handleFileSelect(e) { processFile(e.target.files[0]); }
+
+function processFile(file) {
+  if (!file) return;
+  uploadedFile = file;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const wrap = document.getElementById('upload-preview-wrap');
+    const img  = document.getElementById('upload-preview-img');
+    img.src = ev.target.result;
+    wrap.style.display = 'block';
+    document.getElementById('predict-upload-btn').disabled = false;
+    log(`Image loaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`);
+  };
+  reader.readAsDataURL(file);
+}
+
+async function predictUpload() {
+  if (!uploadedFile) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const dataUrl = ev.target.result;
+    const img = new Image();
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      await runAllPredictions(dataUrl, canvas);
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(uploadedFile);
+}
+
+// ── Core prediction runner ────────────────────────────────────────────────────
+async function runAllPredictions(dataUrl, canvas) {
+  await predictSklearn(dataUrl);
+  if (tmModel) await predictTM(canvas);
+  else log('TM model not loaded — skipping TM prediction', 'inf');
+}
+
+// sklearn prediction (server-side)
+async function predictSklearn(dataUrl) {
+  setVerdict('sk-verdict', 'sk-conf-wrap', 'sk-conf-pct', 'sk-conf-fill', null, null);
+  document.getElementById('sk-verdict').innerHTML = '<span class="spinner"></span>Running…';
+
+  try {
+    const res  = await fetch('/predict/sklearn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      log(`sklearn error: ${data.error}`, 'err');
+      document.getElementById('sk-verdict').textContent = 'Error';
+      return;
+    }
+
+    const isMe = data.is_me;
+    setVerdict('sk-verdict', 'sk-conf-wrap', 'sk-conf-pct', 'sk-conf-fill', isMe, data.confidence);
+    setOverlay(isMe);
+    document.getElementById('meta-face').textContent = data.face_found ? 'Yes ✓' : 'No (fallback)';
+    log(`sklearn → ${data.label} (${data.confidence ?? '?'}% confidence)`, isMe ? 'ok' : 'err');
+
+  } catch(e) {
+    log(`sklearn fetch error: ${e.message}`, 'err');
+    document.getElementById('sk-verdict').textContent = 'Network error';
+  }
+}
+
+// Teachable Machine prediction (client-side)
+async function predictTM(canvas) {
+  if (!tmModel) return;
+  document.getElementById('tm-verdict').innerHTML = '<span class="spinner"></span>Running…';
+
+  try {
+    const predictions = await tmModel.predict(canvas);
+    // Find "ME" class
+    const meClass = predictions.find(p =>
+      p.className.toUpperCase().includes('ME') &&
+      !p.className.toUpperCase().includes('NOT')
+    );
+    const notMeClass = predictions.find(p => p.className.toUpperCase().includes('NOT'));
+
+    let isMe, confidence;
+    if (meClass && notMeClass) {
+      isMe = meClass.probability > notMeClass.probability;
+      confidence = Math.round(Math.max(meClass.probability, notMeClass.probability) * 100);
+    } else {
+      // Fallback: pick highest
+      const top = predictions.reduce((a,b) => a.probability > b.probability ? a : b);
+      isMe = top.className.toUpperCase().includes('ME') && !top.className.toUpperCase().includes('NOT');
+      confidence = Math.round(top.probability * 100);
+    }
+
+    setVerdict('tm-verdict', 'tm-conf-wrap', 'tm-conf-pct', 'tm-conf-fill', isMe, confidence);
+    log(`Teachable Machine → ${isMe ? 'ME' : 'NOT ME'} (${confidence}% confidence)`, isMe ? 'ok' : 'err');
+
+  } catch(e) {
+    log(`TM prediction error: ${e.message}`, 'err');
+    document.getElementById('tm-verdict').textContent = 'Error';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setVerdict(verdictId, confWrapId, confPctId, confFillId, isMe, confidence) {
+  const el = document.getElementById(verdictId);
+  if (isMe === null) { el.className = verdictId.includes('tm') ? 'tm-verdict idle' : 'result-verdict idle'; el.textContent = '—'; return; }
+  el.className = (verdictId.includes('tm') ? 'tm-verdict ' : 'result-verdict ') + (isMe ? 'me' : 'not-me');
+  el.textContent = isMe ? '✓ ME' : '✗ NOT ME';
+
+  if (confidence !== null && confidence !== undefined) {
+    document.getElementById(confWrapId).style.display = 'block';
+    document.getElementById(confPctId).textContent = confidence + '%';
+    const fill = document.getElementById(confFillId);
+    fill.style.width = confidence + '%';
+    fill.style.background = isMe ? 'var(--green)' : 'var(--red)';
+  }
+}
+
+function setOverlay(isMe) {
+  const ov = document.getElementById('result-overlay');
+  ov.className = isMe ? 'me' : 'not-me';
+  ov.textContent = isMe ? '● ME' : '● NOT ME';
+}
+
+// ── TM Model loading ──────────────────────────────────────────────────────────
+async function loadTMModel() {
+  const url = document.getElementById('tm-url').value.trim();
+  if (!url) { alert('Please enter your Teachable Machine model URL.'); return; }
+
+  log('Loading Teachable Machine model…');
+  document.getElementById('meta-tm').textContent = 'Loading…';
+
+  try {
+    const modelURL    = url.endsWith('/') ? url + 'model.json'    : url + '/model.json';
+    const metadataURL = url.endsWith('/') ? url + 'metadata.json' : url + '/metadata.json';
+    tmModel = await tmImage.load(modelURL, metadataURL);
+    document.getElementById('meta-tm').textContent = 'Loaded ✓';
+    log('Teachable Machine model loaded successfully!', 'ok');
+  } catch(e) {
+    log(`Failed to load TM model: ${e.message}`, 'err');
+    document.getElementById('meta-tm').textContent = 'Error';
+    alert('Could not load model. Check the URL and ensure it is publicly accessible.');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+log('App initialized. Start camera or upload an image.', 'ok');
+{% if not model_loaded %}
+log('WARNING: sklearn model not found. Run train_model.py first.', 'err');
+{% endif %}
+</script>
+</body>
+</html>
