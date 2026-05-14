@@ -19,7 +19,7 @@ import time
 
 DATASET_DIR = "dataset"
 
-def collect(label: str, count: int) -> None:
+def collect(label: str, count: int):
     save_dir = os.path.join(DATASET_DIR, label)
     os.makedirs(save_dir, exist_ok=True)
 
