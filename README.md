@@ -1,4 +1,4 @@
-# 🎯 FaceID — Binary Face Recognition Web App
+1# 🎯 FaceID — Binary Face Recognition Web App
 
 A Flask-based web application that performs real-time face classification (ME vs NOT ME) using:
 - **Conventional ML** (scikit-learn: Logistic Regression / kNN / Decision Tree)  
